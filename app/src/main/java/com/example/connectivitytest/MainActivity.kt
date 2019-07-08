@@ -1,7 +1,6 @@
 package com.example.connectivitytest
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
@@ -16,7 +15,6 @@ import kotlinx.android.synthetic.main.activity_main.*
 class MainActivity : AppCompatActivity(), ConnoListener {
     private val infoText = MutableLiveData<String>()
     private val infoText2 = MutableLiveData<String>()
-    private val siteReachable = MutableLiveData<String>()
     private val TAG = this::class.java.simpleName
     private val disposables = CompositeDisposable()
 
@@ -41,8 +39,8 @@ class MainActivity : AppCompatActivity(), ConnoListener {
 
     }
 
-    override fun onConnectivityChanged(intent: Intent) {
-        Log.i(TAG, "onConnectivityChanged: ${intent.action}")
+    override fun onConnectivityChanged(isOnline: Boolean) {
+        Log.i(TAG, "onConnectivityChanged: isOnline: $isOnline")
     }
 
     override fun onNotifierDetached() {
@@ -55,7 +53,7 @@ class MainActivity : AppCompatActivity(), ConnoListener {
 
     override fun onResume() {
         super.onResume()
-       // Conno.registerCallbacks(this) //If you're using callback style
+        Conno.registerCallbacks(this) //If you're using callback style
         Conno.networkCallback().subscribe {
             infoText.postValue("Ping returned: $it")
         }.addToDisposables(disposables)

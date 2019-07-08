@@ -2,107 +2,106 @@ package com.example.conno;
 
 import android.app.Activity;
 import android.app.Application;
-import android.content.Context;
 import android.content.IntentFilter;
-import android.net.ConnectivityManager;
-import android.net.Network;
-import android.net.NetworkCapabilities;
-import android.net.NetworkInfo;
-import android.os.Build;
 import android.os.Bundle;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import io.reactivex.BackpressureStrategy;
-import io.reactivex.Flowable;
-import io.reactivex.Maybe;
-import io.reactivex.Observable;
+import io.reactivex.*;
 import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.BiFunction;
+import io.reactivex.functions.Consumer;
 import io.reactivex.functions.Function;
 import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subjects.BehaviorSubject;
-import okhttp3.*;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.Response;
 import org.jetbrains.annotations.NotNull;
-import org.reactivestreams.Publisher;
 
 import java.io.IOException;
-import java.net.Inet4Address;
-import java.net.UnknownHostException;
 
 public class ConnoManager implements Application.ActivityLifecycleCallbacks {
 
     private ConnoListener listener;
     private NetworkReceiver receiver;
     private Activity activity;
+    private CompositeDisposable compositeDisposable = new CompositeDisposable();
 
     ConnoManager(Application application){
         application.registerActivityLifecycleCallbacks(this);
     }
 
-    void registerNotifier(ConnoListener listener){
-        this.listener = listener;
-        if(receiver!=null) receiver.updateListener(listener);
-        listener.onNotifierAttached();
-
-    }
-
     private void registerBroadCastReceiver(Activity activity){
         IntentFilter filter = new IntentFilter();
         filter.addAction("android.net.conn.CONNECTIVITY_CHANGE");
-        filter.addAction("android.net.wifi.WIFI_STATE_CHANGED");
-        filter.addAction("android.net.conn.DATA_ACTIVITY_CHANGE");
         receiver = new NetworkReceiver();
         activity.registerReceiver(receiver, filter);
+    }
+
+    private Consumer<Boolean> notifyConnectivityChanged = new Consumer<Boolean>() {
+        @Override
+        public void accept(Boolean isOnline) {
+            System.out.println("onNext: isOnline: "+ isOnline);
+            listener.onConnectivityChanged(isOnline);
+        }
+    };
+
+    private void subscribeToConnectivityChanges() {
+        Disposable d = networkNotifier()
+                .subscribeOn(Schedulers.computation())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(notifyConnectivityChanged);
+        compositeDisposable.add(d);
+    }
+
+    void registerNotifier(ConnoListener listener){
+        this.listener = listener;
+        listener.onNotifierAttached();
+        subscribeToConnectivityChanges();
     }
 
     void detachNotifier(){
         if(listener == null) return;
         listener.onNotifierDetached();
         listener = null;
+        compositeDisposable.clear();
     }
 
-    Observable<Boolean> networkCallbacks(){
-        return receiver.getObservable().switchMap(new Function<String, Publisher<? extends Boolean>>() {
-            @Override
-            public Publisher<? extends Boolean> apply(String s) throws Exception {
-                return Observable.just(isNetworkAvailable()).toFlowable(BackpressureStrategy.LATEST);
-            }
-        }).toObservable();
+    private Observable<Boolean> checkActualConnectivity(){
+        return Observable.combineLatest(networkIsAvailable(), siteIsReachable(),
+                new BiFunction<Boolean, Boolean, Boolean>() {
+                    @Override
+                    public Boolean apply(Boolean aBoolean, Boolean aBoolean2) {
+                        return aBoolean && aBoolean2;
+                    }
+                });
     }
 
-    boolean isNetworkAvailable() {
-        final ConnectivityManager cm = (ConnectivityManager) activity.getSystemService(Context.CONNECTIVITY_SERVICE);
+    Flowable<Boolean> networkNotifier(){
+        return receiver.getConnectivityStateObservable()
+                .switchMap(new Function<String, ObservableSource<Boolean>>() {
+                    @Override
+                    public ObservableSource<Boolean> apply(String s){
+                        return checkActualConnectivity();
+                    }
+                })
+                .toFlowable(BackpressureStrategy.LATEST);
 
-        if (cm != null) {
-            if (Build.VERSION.SDK_INT < 23) {
-                final NetworkInfo ni = cm.getActiveNetworkInfo();
-
-                if (ni != null) {
-                    return (ni.isConnected() && (ni.getType() == ConnectivityManager.TYPE_WIFI || ni.getType() == ConnectivityManager.TYPE_MOBILE));
-                }
-            } else {
-                final Network n = cm.getActiveNetwork();
-
-                if (n != null) {
-                    final NetworkCapabilities nc = cm.getNetworkCapabilities(n);
-
-                    assert nc != null;
-                    return (nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) || nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI));
-                }
-            }
-        }
-
-        return false;
     }
 
-    Observable<Boolean> siteIsReachable(){
+    boolean isNetworkAvailable(){
+        return NetworkUtills.isNetworkAvailable(activity) && NetworkUtills.pingTestSite();
+    }
+
+    private Observable<Boolean> networkIsAvailable(){
+        return Observable.just(NetworkUtills.isNetworkAvailable(activity));
+    }
+
+    private Observable<Boolean> siteIsReachable(){
         final BehaviorSubject<Boolean> subject = BehaviorSubject.create();
-
-        OkHttpClient client = new OkHttpClient();
-        final Request request = new Request.Builder()
-                .url("https://www.google.com")
-                .build();
-
-        client.newCall(request).enqueue(new Callback() {
+        NetworkUtills.pingTestSite(new Callback() {
             @Override
             public void onFailure(@NotNull Call call, @NotNull IOException e) {
                 System.out.println("onFailure: "+e.getMessage());
@@ -117,6 +116,8 @@ public class ConnoManager implements Application.ActivityLifecycleCallbacks {
         });
         return subject;
     }
+
+
 
     @Override
     public void onActivityCreated(@NonNull Activity activity, @Nullable Bundle bundle) {
@@ -134,21 +135,16 @@ public class ConnoManager implements Application.ActivityLifecycleCallbacks {
     }
 
     @Override
-    public void onActivityPaused(@NonNull Activity activity) {
-
-    }
+    public void onActivityPaused(@NonNull Activity activity) { }
 
     @Override
     public void onActivityStopped(@NonNull Activity activity) {
         activity.unregisterReceiver(receiver);
-
         this.activity = null;
     }
 
     @Override
-    public void onActivitySaveInstanceState(@NonNull Activity activity, @NonNull Bundle bundle) {
-
-    }
+    public void onActivitySaveInstanceState(@NonNull Activity activity, @NonNull Bundle bundle) { }
 
     @Override
     public void onActivityDestroyed(@NonNull Activity activity) {
