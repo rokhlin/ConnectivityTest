@@ -16,6 +16,7 @@ import kotlinx.android.synthetic.main.activity_main.*
 class MainActivity : AppCompatActivity(), ConnoListener {
     private val infoText = MutableLiveData<String>()
     private val infoText2 = MutableLiveData<String>()
+    private val siteReachable = MutableLiveData<String>()
     private val TAG = this::class.java.simpleName
     private val disposables = CompositeDisposable()
 
@@ -58,6 +59,7 @@ class MainActivity : AppCompatActivity(), ConnoListener {
         Conno.networkCallback().subscribe {
             infoText.postValue("Ping returned: $it")
         }.addToDisposables(disposables)
+
     }
 
     override fun onStop() {

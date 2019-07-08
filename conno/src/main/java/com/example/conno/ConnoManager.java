@@ -14,11 +14,18 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Flowable;
+import io.reactivex.Maybe;
 import io.reactivex.Observable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.functions.Function;
+import io.reactivex.schedulers.Schedulers;
+import io.reactivex.subjects.BehaviorSubject;
+import okhttp3.*;
+import org.jetbrains.annotations.NotNull;
 import org.reactivestreams.Publisher;
 
-import java.net.InetAddress;
+import java.io.IOException;
+import java.net.Inet4Address;
 import java.net.UnknownHostException;
 
 public class ConnoManager implements Application.ActivityLifecycleCallbacks {
@@ -53,13 +60,13 @@ public class ConnoManager implements Application.ActivityLifecycleCallbacks {
         listener = null;
     }
 
-    Flowable<Boolean> networkCallbacks(){
+    Observable<Boolean> networkCallbacks(){
         return receiver.getObservable().switchMap(new Function<String, Publisher<? extends Boolean>>() {
             @Override
             public Publisher<? extends Boolean> apply(String s) throws Exception {
                 return Observable.just(isNetworkAvailable()).toFlowable(BackpressureStrategy.LATEST);
             }
-        });
+        }).toObservable();
     }
 
     boolean isNetworkAvailable() {
@@ -87,57 +94,28 @@ public class ConnoManager implements Application.ActivityLifecycleCallbacks {
         return false;
     }
 
-//    Flowable<Boolean>  siteIsReachable(){
-//        final BehaviorSubject<Boolean> subject = BehaviorSubject.create();
-//        Thread thread = new Thread(new Runnable() {
-//            @Override
-//            public void run() {
-//                try {
-//                    //URL url = new URL("8.8.8.8");
-//                    OkHttpClient client = new OkHttpClient();
-//                    Request request = new Request.Builder()
-//                            .url("http://google.com")
-//                            .build();
-//
-//                    Response response = client.newCall(request).execute();
-//                   // responseValue[0] = response.isSuccessful();
-//                    subject.onNext(response.isSuccessful());
-//
-//                } catch (IOException e) {
-//                    e.printStackTrace();
-//                }
-//            }
-//        });
-//        thread.start();
-//        try {
-//            thread.join();
-//        } catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
-//        return subject.toFlowable(BackpressureStrategy.LATEST)
-//                .observeOn(Schedulers.computation())
-//                .subscribeOn(AndroidSchedulers.mainThread());
-//    }
+    Observable<Boolean> siteIsReachable(){
+        final BehaviorSubject<Boolean> subject = BehaviorSubject.create();
 
-    // It works only until v23
-    boolean ping23(String path){
-        String pathToPing = "google.com";
-        if(pathIsCorrect(path)) pathToPing = path;
+        OkHttpClient client = new OkHttpClient();
+        final Request request = new Request.Builder()
+                .url("https://www.google.com")
+                .build();
 
-        try {
-            return InetAddress.getByName(pathToPing).isSiteLocalAddress();
-        } catch (UnknownHostException ignore) {
-            ignore.printStackTrace();
-            System.out.println(" Exception:"+ignore);
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println(" Exception:"+e);
-        }
-        return false;
-    }
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NotNull Call call, @NotNull IOException e) {
+                System.out.println("onFailure: "+e.getMessage());
+                subject.onNext(false);
+            }
 
-    private static boolean pathIsCorrect(String path) {
-        return false;//TODO NOT IMPLEMENTED
+            @Override
+            public void onResponse(@NotNull Call call, @NotNull Response response) {
+                System.out.println("onResponse: "+ response.toString());
+                subject.onNext(response.isSuccessful());
+            }
+        });
+        return subject;
     }
 
     @Override
@@ -163,7 +141,7 @@ public class ConnoManager implements Application.ActivityLifecycleCallbacks {
     @Override
     public void onActivityStopped(@NonNull Activity activity) {
         activity.unregisterReceiver(receiver);
-        detachNotifier();
+
         this.activity = null;
     }
 
@@ -174,5 +152,6 @@ public class ConnoManager implements Application.ActivityLifecycleCallbacks {
 
     @Override
     public void onActivityDestroyed(@NonNull Activity activity) {
+        detachNotifier();
     }
 }
