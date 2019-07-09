@@ -22,7 +22,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-public class ConnoManager implements Application.ActivityLifecycleCallbacks {
+class ConnoManager implements Application.ActivityLifecycleCallbacks {
 
     private ConnoListener listener;
     private NetworkReceiver receiver;
@@ -43,7 +43,6 @@ public class ConnoManager implements Application.ActivityLifecycleCallbacks {
     private Consumer<Boolean> notifyConnectivityChanged = new Consumer<Boolean>() {
         @Override
         public void accept(Boolean isOnline) {
-            System.out.println("onNext: isOnline: "+ isOnline);
             listener.onConnectivityChanged(isOnline);
         }
     };
@@ -104,13 +103,11 @@ public class ConnoManager implements Application.ActivityLifecycleCallbacks {
         NetworkUtills.pingTestSite(new Callback() {
             @Override
             public void onFailure(@NotNull Call call, @NotNull IOException e) {
-                System.out.println("onFailure: "+e.getMessage());
                 subject.onNext(false);
             }
 
             @Override
             public void onResponse(@NotNull Call call, @NotNull Response response) {
-                System.out.println("onResponse: "+ response.toString());
                 subject.onNext(response.isSuccessful());
             }
         });

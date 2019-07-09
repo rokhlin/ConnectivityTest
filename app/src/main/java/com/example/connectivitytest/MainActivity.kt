@@ -33,7 +33,7 @@ class MainActivity : AppCompatActivity(), ConnoListener {
             connection_info2.text = it
         })
 
-        Conno.getInstance(this.application).isNetworkAvailable.let {
+        Conno.isNetworkAvailable().let {
             infoText2.postValue("isNetworkAvailable returned: $it")
         }
 
@@ -54,7 +54,7 @@ class MainActivity : AppCompatActivity(), ConnoListener {
     override fun onResume() {
         super.onResume()
         Conno.registerCallbacks(this) //If you're using callback style
-        Conno.networkCallback().subscribe {
+        Conno.connectionNotifier().subscribe {
             infoText.postValue("Ping returned: $it")
         }.addToDisposables(disposables)
 
@@ -62,7 +62,6 @@ class MainActivity : AppCompatActivity(), ConnoListener {
 
     override fun onStop() {
         super.onStop()
-     //   Conno.unregisterCallbacks() //If you're using callback style
         disposables.dispose()
     }
 }

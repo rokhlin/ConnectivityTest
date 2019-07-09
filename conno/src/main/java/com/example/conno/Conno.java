@@ -13,16 +13,16 @@ public class Conno  {
     @SuppressLint("StaticFieldLeak")
     private static Conno instance = null;
 
-    public static Conno getInstance(@NonNull Application application){
+    public static Conno init(@NonNull Application application){
         if(instance == null) instance = new Conno(application);
         return instance;
     }
 
-    public boolean isNetworkAvailable(){
+    public static boolean isNetworkAvailable(){
         return manager.isNetworkAvailable();
     }
 
-    public static Flowable<Boolean> networkCallback(){
+    public static Flowable<Boolean> connectionNotifier(){
         return manager.networkNotifier()
                     .subscribeOn(Schedulers.computation())
                     .observeOn(AndroidSchedulers.mainThread());
